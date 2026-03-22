@@ -1,20 +1,15 @@
 import { motion, type Variants } from 'framer-motion';
 import { ScanLine, BrainCircuit, LineChart, GraduationCap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { GoogleLogin } from '@react-oauth/google';
-import { jwtDecode } from "jwt-decode";
+import { useGoogleLogin } from '@react-oauth/google';
+import { useNavigate } from 'react-router-dom';
+import { useSetAtom } from 'jotai';
+import { userAtom, googleCredentialsAtom, type UserProfile, type GoogleCredentials } from '@/store';
 
-export interface UserProfile {
-  name: string;
-  email: string;
-  picture: string;
-}
-
-interface LandingPageProps {
-  onStart: (user?: UserProfile) => void;
-}
-
-export default function LandingPage({ onStart }: LandingPageProps) {
+export default function LandingPage() {
+  const navigate = useNavigate();
+  const setUser = useSetAtom(userAtom);
+  const setGoogleCredentials = useSetAtom(googleCredentialsAtom);
   // Animation Variants
   const containerVars: Variants = {
     hidden: { opacity: 0 },
@@ -25,6 +20,47 @@ export default function LandingPage({ onStart }: LandingPageProps) {
     hidden: { opacity: 0, y: 20 },
     visible: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 24 } }
   };
+
+  const loginToGoogle = useGoogleLogin({
+    flow: 'auth-code',
+    scope: 'openid email profile https://www.googleapis.com/auth/gmail.modify',
+    onSuccess: async (codeResponse) => {
+      try {
+        const res = await fetch('http://localhost:8000/api/auth/google', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: codeResponse.code })
+        });
+        
+        if (!res.ok) throw new Error('Auth exchange failed. Missing Client Secret?');
+        const credentials: GoogleCredentials = await res.json();
+        
+        // Fetch User Identity securely from Google via the new Access Token
+        const profileRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: { Authorization: `Bearer ${credentials.access_token}` }
+        });
+        const profile = await profileRes.json();
+        
+        const userData: UserProfile = {
+          name: profile.name,
+          email: profile.email,
+          picture: profile.picture
+        };
+        
+        setUser(userData);
+        setGoogleCredentials(credentials);
+        navigate('/chat');
+      } catch (err: any) {
+        console.error('Google Auth Failed', err);
+        alert('Google Authentication Failed! Ensure your backend .env file has the GOOGLE_CLIENT_SECRET, and check the server logs. Falling back to Guest mode.');
+        navigate('/chat');
+      }
+    },
+    onError: () => {
+      console.error('Google Login Dialog Failed');
+      navigate('/chat'); 
+    }
+  });
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-zinc-50 font-sans flex flex-col relative overflow-hidden selection:bg-zinc-800">
@@ -44,7 +80,7 @@ export default function LandingPage({ onStart }: LandingPageProps) {
           <span className="hover:text-white transition-colors cursor-pointer">Security</span>
         </div>
         <Button 
-          onClick={() => onStart()}
+          onClick={() => navigate('/chat')}
           variant="outline" 
           className="bg-black/50 border-white/10 text-white hover:bg-white hover:text-black transition-all rounded-full px-6 h-10 text-sm"
         >
@@ -77,27 +113,19 @@ export default function LandingPage({ onStart }: LandingPageProps) {
           </motion.p>
 
           <motion.div variants={itemVars} className="flex flex-col sm:flex-row items-center gap-4">
-            <GoogleLogin
-              onSuccess={(credentialResponse) => {
-                if (credentialResponse.credential) {
-                  const decoded = jwtDecode<UserProfile>(credentialResponse.credential);
-                  onStart(decoded);
-                }
-              }}
-              onError={() => {
-                console.error('Google Login Failed');
-                onStart(); // Fallback to guest if configuration fails locally
-              }}
-              theme="filled_black"
-              shape="pill"
-              size="large"
-            />
-            <Button 
-              onClick={() => onStart()}
-              variant="outline" 
-              className="h-[40px] px-8 rounded-full bg-transparent border-white/10 text-white hover:bg-white/5 transition-all font-medium text-sm"
+            <button 
+              onClick={() => loginToGoogle()}
+              className="h-[44px] px-8 rounded-full bg-white text-black hover:bg-zinc-200 transition-all font-semibold shadow-lg shadow-white/10 flex items-center justify-center gap-3 text-[15px]"
             >
-              Skip for now
+              <svg width="18" height="18" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+              <span>Connect Google Workspace</span>
+            </button>
+            <Button 
+              onClick={() => navigate('/chat')}
+              variant="outline" 
+              className="h-[44px] px-8 rounded-full bg-transparent border-white/10 text-white hover:bg-white/5 transition-all font-medium text-[15px]"
+            >
+              Guest Access
             </Button>
           </motion.div>
 

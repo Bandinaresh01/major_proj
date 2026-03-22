@@ -1,9 +1,12 @@
 import os
+from dotenv import load_dotenv
 from langchain_groq import ChatGroq
-from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage, AIMessage
-from dotenv import load_dotenv
+from langchain.agents import AgentExecutor
+from langchain.agents.output_parsers.tools import ToolsAgentOutputParser
+from langchain.agents.format_scratchpad.tools import format_to_tool_messages
+from langchain_core.runnables import RunnablePassthrough
 
 from tools.weather import weather_tool
 from tools.news import news_tool
@@ -12,10 +15,11 @@ from tools.time_tool import time_tool
 from tools.scrape_tool import scrape_webpage
 from tools.finance_tool import finance_tool
 from tools.arxiv_tool import arxiv_tool
+from tools.gmail_tool import create_read_emails_tool, create_send_email_tool
 
 load_dotenv()
 
-def get_agent_response(query: str, history: list = None) -> dict:
+def get_agent_response(query: str, history: list = None, google_credentials: dict = None) -> dict:
     """
     Initializes the agent with the Groq model and available tools,
     then executes the query using robust tool calling.
@@ -27,25 +31,50 @@ def get_agent_response(query: str, history: list = None) -> dict:
 
     llm = ChatGroq(
         groq_api_key=groq_api_key, 
-        model_name="llama-3.1-8b-instant",  
-        temperature=0.0
+        model_name="llama-3.1-8b-instant",
+        temperature=1.0
     )
 
     tools = [weather_tool, news_tool, search_tool, time_tool, scrape_webpage, finance_tool, arxiv_tool]
+    
+    if google_credentials:
+        tools.append(create_read_emails_tool(google_credentials))
+        tools.append(create_send_email_tool(google_credentials))
+
+    SYSTEM_PROMPT = "You are EchoMind, an elite AI assistant with access to real-time tools: weather, news, search, time clock, webpage scraper, finance tracker, and ArXiv academic paper fetcher. " \
+                    "If you have access to `read_recent_emails` and `send_email`, you are explicitly connected to the user's secure Gmail account. Use those tools to check their inbox or send emails on their behalf! " \
+                    "CRITICAL: You are an advanced agent. For complex queries you MUST use MULTIPLE tools to gather deep context before answering. " \
+                    "Synthesize the vast multi-tool data into a comprehensive, highly-detailed, and friendly Markdown response. Do not end your turn prematurely until you have all the facts!"
 
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are EchoMind, an elite AI assistant with access to real-time tools: weather, news, search, time clock, webpage scraper, finance tracker, and ArXiv academic paper fetcher. "
-                   "Always use the tools to answer questions about current events, local conditions, exact time, or specific facts. "
-                   "CRITICAL: You are an advanced agent. For complex queries you MUST use MULTIPLE tools to gather deep context before answering. "
-                   "For example, use 'finance_tool' for crypto/stock prices, use 'search_tool' to find details, use 'news_tool' for market reactions, "
-                   "use 'arxiv_tool' to fetch research papers, and use 'scrape_webpage' to physically read an official link. "
-                   "Synthesize the vast multi-tool data into a comprehensive, highly-detailed, and friendly Markdown response. Do not end your turn prematurely until you have all the facts!"),
+        ("system", SYSTEM_PROMPT),
         MessagesPlaceholder(variable_name="chat_history"),
         ("human", "{input}"),
-        ("placeholder", "{agent_scratchpad}"),
+        MessagesPlaceholder(variable_name="agent_scratchpad"),
     ])
 
-    agent = create_tool_calling_agent(llm, tools, prompt)
+    # Resolving root cause: Llama-3 drops arguments objects entirely for 0-arg tools, returning None.
+    # We intercept generating AIMessages and explicitly convert None arguments to empty dictionaries {}
+    # so the ToolsAgentOutputParser doesn't crash throwing AttributeError.
+    def fix_null_args(ai_message: AIMessage) -> AIMessage:
+        if hasattr(ai_message, "tool_calls"):
+            for tc in ai_message.tool_calls:
+                if tc.get("args") is None:
+                    tc["args"] = {}
+        return ai_message
+
+    llm_with_tools = llm.bind_tools(tools)
+    
+    # Constructing the exact create_tool_calling_agent chain, but embedding our null safety interceptor
+    agent = (
+        RunnablePassthrough.assign(
+            agent_scratchpad=lambda x: format_to_tool_messages(x["intermediate_steps"])
+        )
+        | prompt
+        | llm_with_tools
+        | fix_null_args
+        | ToolsAgentOutputParser()
+    )
 
     # Set return_intermediate_steps to True to capture the exact tools the agent decided to use
     agent_executor = AgentExecutor(
@@ -53,7 +82,8 @@ def get_agent_response(query: str, history: list = None) -> dict:
         tools=tools, 
         verbose=True,
         return_intermediate_steps=True,
-        max_iterations=8
+        max_iterations=8,
+        handle_parsing_errors=True
     )
 
     # Convert history dicts into LangChain Message objects

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from typing import List, Dict, Optional, Any
 from agent.langchain_agent import get_agent_response
 import asyncio
 
@@ -11,7 +12,8 @@ class Message(BaseModel):
 
 class ChatRequest(BaseModel):
     query: str
-    history: list[Message] = []
+    history: List[Dict[str, str]] = []
+    google_credentials: Optional[Dict[str, Any]] = None
 
 class ChatResponse(BaseModel):
     response: str
@@ -22,19 +24,18 @@ async def chat_endpoint(request: ChatRequest):
     try:
         if not request.query.strip():
             raise HTTPException(status_code=400, detail="Query cannot be empty.")
-            
-        # Function to run the synchronous agent in a background thread
-        def run_sync_agent():
-            history_dicts = [{"role": msg.role, "content": msg.content} for msg in request.history]
-            return get_agent_response(request.query, history_dicts)
 
         try:
+            # Run agent executor synchronously inside a threadpool to not block the asyncio event loop
+            loop = asyncio.get_running_loop()
+            task = loop.run_in_executor(
+                None,
+                lambda: get_agent_response(request.query, request.history, request.google_credentials)
+            )
             # Extended heavily to 45.0 seconds. Multi-tool sequential reasoning chains (Search -> Scrape -> Synthesize) take time.
-            loop = asyncio.get_event_loop()
-            task = loop.run_in_executor(None, run_sync_agent)
             result = await asyncio.wait_for(task, timeout=45.0)
         except asyncio.TimeoutError:
-            # If the LLM takes longer than 1 second, cancel and return the exact message
+            # If the LLM takes longer than 45 seconds, cancel and return the exact message
             return ChatResponse(response="Sorry, we will get back to you.", tools_used=[])
         
         if isinstance(result, dict):
