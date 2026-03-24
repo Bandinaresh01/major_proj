@@ -1,6 +1,7 @@
 from dotenv import load_dotenv
 
 load_dotenv() # Uvicorn HOT-RELOAD TRIGGER
+import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routers.chat import router as chat_router
@@ -26,6 +27,6 @@ app.include_router(health_router, prefix="/api")
 def root():
     return {"message": "Welcome to the Fullstack AI Search API"}
 
+
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("app:app", reload=True)

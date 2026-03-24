@@ -79,11 +79,11 @@ export default function ChatPage() {
       }
 
       // https://myapp-backend-2-p1nh.onrender.com
-      // http://localhost:8000
-      const response = await fetch('https://myapp-backend-2-p1nh.onrender.com/api/chat', {
+      // https://my-backend1-6q8j.onrender.com
+      const response = await fetch('https://my-backend1-6q8j.onrender.com/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           query: userMessage.content,
           history: historyToSend,
           google_credentials: googleCredentials,
@@ -95,10 +95,10 @@ export default function ChatPage() {
       if (!response.body) throw new Error('No response body');
 
       const assistantId = (Date.now() + 1).toString();
-      
+
       // Seed empty assistant message to stream into
       setMessages((prev) => [
-        ...prev, 
+        ...prev,
         { id: assistantId, role: 'assistant', content: '', tools_used: [] }
       ]);
 
@@ -114,30 +114,30 @@ export default function ChatPage() {
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split('\n');
           buffer = lines.pop() || ''; // Keep the incomplete line in the buffer for the next chunk
-          
+
           for (const line of lines) {
             if (line.startsWith('data: ')) {
               const dataStr = line.slice(6).trim();
               if (!dataStr) continue;
-              
+
               try {
                 const parsed = JSON.parse(dataStr);
-                
+
                 if (parsed.type === 'token') {
-                  setMessages(prev => prev.map(msg => 
-                    msg.id === assistantId 
+                  setMessages(prev => prev.map(msg =>
+                    msg.id === assistantId
                       ? { ...msg, content: msg.content + parsed.content }
                       : msg
                   ));
                 } else if (parsed.type === 'tool') {
-                  setMessages(prev => prev.map(msg => 
-                    msg.id === assistantId 
+                  setMessages(prev => prev.map(msg =>
+                    msg.id === assistantId
                       ? { ...msg, tools_used: [...(msg.tools_used || []), parsed.name] }
                       : msg
                   ));
                 } else if (parsed.type === 'error') {
-                   setMessages(prev => prev.map(msg => 
-                    msg.id === assistantId 
+                  setMessages(prev => prev.map(msg =>
+                    msg.id === assistantId
                       ? { ...msg, content: msg.content + '\n\n**Error:** ' + parsed.content }
                       : msg
                   ));
@@ -154,7 +154,7 @@ export default function ChatPage() {
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'I encountered an error connecting to the backend. Please ensure the server is running on `http://localhost:8000`.',
+        content: 'I encountered an error connecting to the backend. Please ensure the server is running on `https://my-backend1-6q8j.onrender.com`.',
       };
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
@@ -163,7 +163,7 @@ export default function ChatPage() {
   };
 
   return (
-    <motion.div 
+    <motion.div
       key="chat"
       initial={{ opacity: 0, y: 5 }}
       animate={{ opacity: 1, y: 0 }}
@@ -178,8 +178,8 @@ export default function ChatPage() {
           {AVAILABLE_TOOLS.map((tool) => {
             const Icon = tool.icon;
             return (
-              <div 
-                key={tool.id} 
+              <div
+                key={tool.id}
                 className="flex items-center gap-3 p-3 rounded-lg border border-white/5 bg-zinc-900/50 hover:bg-zinc-800/50 transition-colors"
               >
                 <Icon className="w-4 h-4 text-zinc-400" />
@@ -206,15 +206,13 @@ export default function ChatPage() {
                   key={message.id}
                   initial={{ opacity: 0, y: 5 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className={`flex items-start gap-4 ${
-                    message.role === 'user' ? 'flex-row-reverse' : 'flex-row'
-                  }`}
+                  className={`flex items-start gap-4 ${message.role === 'user' ? 'flex-row-reverse' : 'flex-row'
+                    }`}
                 >
-                  <div className={`mt-1 w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center overflow-hidden border ${
-                    message.role === 'user' 
-                      ? 'bg-zinc-100 border-zinc-200' 
+                  <div className={`mt-1 w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center overflow-hidden border ${message.role === 'user'
+                      ? 'bg-zinc-100 border-zinc-200'
                       : 'bg-black border-white/10'
-                  }`}>
+                    }`}>
                     {message.role === 'user' ? (
                       user?.picture ? (
                         <img src={user.picture} alt="User" className="w-full h-full object-cover" />
@@ -225,7 +223,7 @@ export default function ChatPage() {
                       <img src="/avatar.png" alt="EchoMind" className="w-full h-full object-cover" />
                     )}
                   </div>
-                  
+
                   <div className="flex flex-col gap-2 max-w-[85%] min-w-0">
                     {/* Tool Usage Badge */}
                     {message.role === 'assistant' && message.tools_used && message.tools_used.length > 0 && (
@@ -244,11 +242,10 @@ export default function ChatPage() {
                     )}
 
                     <div
-                      className={`px-5 py-3.5 text-[15px] leading-relaxed shadow-sm overflow-hidden ${
-                        message.role === 'user'
+                      className={`px-5 py-3.5 text-[15px] leading-relaxed shadow-sm overflow-hidden ${message.role === 'user'
                           ? 'bg-zinc-100 text-black rounded-2xl rounded-tr-sm font-medium shadow-white/5 whitespace-pre-wrap break-words'
                           : 'bg-black/80 backdrop-blur-md text-zinc-300 rounded-2xl rounded-tl-sm border border-white/5 prose prose-invert max-w-none prose-p:leading-relaxed prose-pre:bg-zinc-950 prose-pre:border prose-pre:border-white/10 prose-strong:text-zinc-100 placeholder:text-zinc-500 break-words'
-                      }`}
+                        }`}
                     >
                       {message.role === 'user' ? (
                         <p className="break-words">{message.content}</p>
@@ -264,16 +261,16 @@ export default function ChatPage() {
                 </motion.div>
               ))}
             </AnimatePresence>
-            
-            
+
+
             {isLoading && (
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0, y: 5 }}
                 animate={{ opacity: 1, y: 0 }}
                 className="flex items-start gap-4"
               >
                 <div className="mt-1 w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center overflow-hidden border bg-black border-white/10">
-                   <img src="/avatar.png" alt="EchoMind" className="w-full h-full object-cover opacity-50 pulse-anim" />
+                  <img src="/avatar.png" alt="EchoMind" className="w-full h-full object-cover opacity-50 pulse-anim" />
                 </div>
                 <div className="px-5 py-3.5 rounded-2xl bg-zinc-900 border border-white/5 rounded-tl-sm flex items-center gap-3">
                   <div className="flex gap-1">
@@ -286,18 +283,17 @@ export default function ChatPage() {
             )}
           </div>
         </div>
-        
+
         <div className="p-4 bg-[#0a0a0a] border-t border-white/5 shrink-0 flex flex-col gap-3">
           {/* Mode Selector */}
           <div className="flex items-center justify-center gap-2 max-w-4xl mx-auto w-full">
             <button
               type="button"
               onClick={() => setChatMode('fast')}
-              className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${
-                chatMode === 'fast' 
-                  ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' 
+              className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${chatMode === 'fast'
+                  ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
                   : 'bg-zinc-900 text-zinc-500 hover:bg-zinc-800 border border-transparent'
-              }`}
+                }`}
             >
               <Zap className="w-3.5 h-3.5" />
               Quick Reply
@@ -305,11 +301,10 @@ export default function ChatPage() {
             <button
               type="button"
               onClick={() => setChatMode('normal')}
-              className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${
-                chatMode === 'normal' 
-                  ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' 
+              className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${chatMode === 'normal'
+                  ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20'
                   : 'bg-zinc-900 text-zinc-500 hover:bg-zinc-800 border border-transparent'
-              }`}
+                }`}
             >
               <MessageSquare className="w-3.5 h-3.5" />
               Standard
@@ -317,11 +312,10 @@ export default function ChatPage() {
             <button
               type="button"
               onClick={() => setChatMode('deep')}
-              className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${
-                chatMode === 'deep' 
-                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+              className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${chatMode === 'deep'
+                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                   : 'bg-zinc-900 text-zinc-500 hover:bg-zinc-800 border border-transparent'
-              }`}
+                }`}
             >
               <Brain className="w-3.5 h-3.5" />
               Deep Research
